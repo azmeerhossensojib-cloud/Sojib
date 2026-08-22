@@ -48,15 +48,96 @@
     const num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
     const fmt = (v) => "৳ " + new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(num(v));
 
-    function App() {
-      useLedgerFonts();
-      return (
-        <div class="p-6 text-center">
-          <h1 class="text-2xl font-bold text-emerald-400">আপনার বাজেট অ্যাপ প্রস্তুত!</h1>
-          <p class="mt-2 text-slate-300">এখন সম্পূর্ণ ডাটা সেটআপ করে এটি ব্যবহার করতে পারবেন।</p>
-        </div>
-      );
-    }
+    import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import {
+  Wallet, Landmark, Coins, PieChart as PieIcon, Receipt, Plus, Trash2,
+  Download, Printer, Search, TrendingUp, TrendingDown, CalendarDays,
+  Menu, X, ChevronsRight, ChevronsLeft
+} from "lucide-react";
+import {
+  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis,
+  CartesianGrid, Tooltip, Legend, ResponsiveContainer
+} from "recharts";
+import * as XLSX from "xlsx";
+
+/* ---------------------------------------------------------------------- */
+/*  Fonts                                                                  */
+/* ---------------------------------------------------------------------- */
+function useLedgerFonts() {
+  useEffect(() => {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href =
+      "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap";
+    document.head.appendChild(link);
+    return () => document.head.removeChild(link);
+  }, []);
+}
+
+/* ---------------------------------------------------------------------- */
+/*  Constants / helpers                                                    */
+/* ---------------------------------------------------------------------- */
+const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+const num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+const fmt = (v) => "৳ " + new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(num(v));
+const monthKey = (y, m) => `${y}-${String(m).padStart(2, "0")}`;
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
+const COLOR = { green: "#4f9a67", yellow: "#cf9a3c", red: "#c0392b", neutral: "#7d8f86", gold: "#c9a227" };
+
+const DEFAULT_ASSETS = ["Gold","Eid ul Adha Fund","Bkash","Cash","Receivables","DPS","FDR","Sanchaypatra","Tangible Assets"];
+const DEFAULT_INCOME = ["Salary","Incentives"];
+const DEFAULT_EXPENSE = [
+  "Home Rent","Family Budget - Abbu","Family Budget - Ammu","Family Budget - Hena","Family Budget - Jannat",
+  "Hand Cost","Home Cost","Electricity","Hair","Internet and Mobile","Home Maid","Shariatpur","Doctor","EMI",
+  "DPS","Kurbani","Tour","Shopping","Loan EMI","Other Dues","Other"
+];
+
+function emptyMonth() {
+  return {
+    income: DEFAULT_INCOME.map((h) => ({ id: uid(), head: h, budget: 0, actual: 0, notes: "" })),
+    expense: DEFAULT_EXPENSE.map((h) => ({ id: uid(), head: h, budget: 0, actual: 0, notes: "" })),
+  };
+}
+
+function defaultState() {
+  return {
+    assets: DEFAULT_ASSETS.map((n) => ({ id: uid(), name: n, amount: 0 })),
+    liabilities: { borrowings: [], cards: [], loans: [], custom: [] },
+    months: {},
+    handCostCycles: {},
+    visitBills: [],
+  };
+}
+
+/* Hand Cost cycle: 24th of `cycleKey` month -> 23rd of the next month */
+function cycleDates(cycleKey) {
+  const [y, m] = cycleKey.split("-").map(Number);
+  const start = new Date(y, m - 1, 24);
+  const dates = [];
+  for (let i = 0; i < 31; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    dates.push(d.toISOString().slice(0, 10));
+    const next = new Date(y, m, 23);
+    if (d.getFullYear() === next.getFullYear() && d.getMonth() === next.getMonth() && d.getDate() === next.getDate()) break;
+  }
+  return dates;
+}
+function cycleLabel(cycleKey) {
+  const [y, m] = cycleKey.split("-").map(Number);
+  const startM = MONTH_NAMES[m - 1].slice(0, 3);
+  const endDate = new Date(y, m, 23);
+  const endM = MONTH_NAMES[endDate.getMonth()].slice(0, 3);
+  return `24 ${startM} – 23 ${endM} ${endDate.getFullYear()}`;
+}
+
+/* Budget usage status: green <50%, yellow 50-90%, red >=90% or exceeded */
+function usageStatus(budget, actual) {
+  const b = num(budget), a = num(actual);
+  if (b <= 0 && a <= 0) return { color: COLOR.neutral, label: null };
+  if (a > b && b > 0) return {
 
     ReactDOM.createRoot(document.getElementById('root')).render(<App />);
   </script>
