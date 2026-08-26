@@ -115,7 +115,9 @@ const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(
 const num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
 const fmt = (v) => "৳ " + new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(num(v));
 const monthKey = (y, m) => `${y}-${String(m).padStart(2, "0")}`;
-const todayISO = () => new Date().toISOString().slice(0, 10);
+/* Local-timezone-safe date string (avoids the UTC-shift bug of toISOString) */
+const localISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const todayISO = () => localISO(new Date());
 
 const COLOR = { green: "#4f9a67", yellow: "#cf9a3c", red: "#c0392b", neutral: "#7d8f86", gold: "#c9a227" };
 
@@ -152,7 +154,7 @@ function cycleDates(cycleKey) {
   for (let i = 0; i < 31; i++) {
     const d = new Date(start);
     d.setDate(start.getDate() + i);
-    dates.push(d.toISOString().slice(0, 10));
+    dates.push(localISO(d));
     const next = new Date(y, m, 23);
     if (d.getFullYear() === next.getFullYear() && d.getMonth() === next.getMonth() && d.getDate() === next.getDate()) break;
   }
@@ -166,14 +168,14 @@ function cycleLabel(cycleKey) {
   return `24 ${startM} – 23 ${endM} ${endDate.getFullYear()}`;
 }
 
-/* Budget usage status: green <50%, yellow 50-90%, red >=90% or exceeded */
+/* Budget usage status: green <50%, yellow 50-84%, red >=85% or exceeded */
 function usageStatus(budget, actual) {
   const b = num(budget), a = num(actual);
   if (b <= 0 && a <= 0) return { color: COLOR.neutral, label: null };
   if (a > b && b > 0) return { color: COLOR.red, label: "Exceeded" };
   if (b <= 0) return { color: COLOR.red, label: "No budget" };
   const pct = (a / b) * 100;
-  if (pct >= 90) return { color: COLOR.red, label: "Critical" };
+  if (pct >= 85) return { color: COLOR.red, label: "Critical" };
   if (pct >= 50) return { color: COLOR.yellow, label: "Moderate" };
   return { color: COLOR.green, label: "Low" };
 }
@@ -191,7 +193,7 @@ function netPositionStatus(assets, liabilities) {
 /* ---------------------------------------------------------------------- */
 function Card({ children, className = "" }) {
   return (
-    <div className={`rounded-xl border border-[#26332e] bg-[#161f1c] shadow-[0_1px_0_rgba(255,255,255,0.02)] ${className}`}>
+    <div className={`rounded-2xl border border-[#26332e] bg-[#161f1c] shadow-[0_1px_0_rgba(255,255,255,0.02)] transition-shadow duration-200 hover:shadow-[0_4px_24px_-8px_rgba(0,0,0,0.35)] ${className}`}>
       {children}
     </div>
   );
@@ -200,17 +202,25 @@ function Card({ children, className = "" }) {
 function StatCard({ label, value, tone = "neutral", icon: Icon, statusColor, statusLabel }) {
   const toneColor =
     tone === "good" ? "text-[#c9a227]" : tone === "bad" ? "text-[#c0392b]" : "text-[#e9e4d8]";
+  const iconColor = tone === "good" ? "#c9a227" : tone === "bad" ? "#c0392b" : "#8fae9e";
   return (
-    <Card className="p-4 flex flex-col gap-1 min-w-[150px]" >
+    <Card className="p-4 flex flex-col gap-1 min-w-[150px] relative overflow-hidden group">
+      {statusColor && (
+        <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: `linear-gradient(90deg, ${statusColor}, ${statusColor}66)` }} />
+      )}
       <div style={statusColor ? { borderLeft: `3px solid ${statusColor}`, marginLeft: "-1px", paddingLeft: 10 } : {}}>
         <div className="flex items-center justify-between">
           <span className="text-[11px] uppercase tracking-wider text-[#7d8f86]">{label}</span>
-          {Icon ? <Icon size={14} className="text-[#4f6158]" /> : null}
+          {Icon ? (
+            <span className="w-6 h-6 rounded-full flex items-center justify-center bg-[#1e2a25] group-hover:bg-[#243530] transition-colors" style={{ boxShadow: `inset 0 0 0 1px ${iconColor}22` }}>
+              <Icon size={13} style={{ color: iconColor }} />
+            </span>
+          ) : null}
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap mt-0.5">
           <span className={`font-mono text-lg font-semibold ${toneColor}`}>{fmt(value)}</span>
           {statusLabel && (
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded" style={{ color: statusColor, backgroundColor: statusColor + "22" }}>
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full" style={{ color: statusColor, backgroundColor: statusColor + "22" }}>
               {statusLabel}
             </span>
           )}
@@ -240,7 +250,7 @@ function PrimaryBtn({ onClick, children, className = "" }) {
   return (
     <button
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#c9a227] text-[#12181a] text-sm font-medium hover:bg-[#dab538] transition-colors ${className}`}
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#c9a227] text-[#12181a] text-sm font-medium hover:bg-[#dab538] active:scale-95 transition-all duration-150 shadow-[0_1px_0_rgba(0,0,0,0.2)] ${className}`}
     >
       {children}
     </button>
@@ -251,10 +261,65 @@ function GhostBtn({ onClick, children, className = "" }) {
   return (
     <button
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[#26332e] text-[#c8d3ce] text-sm hover:bg-[#1e2a25] transition-colors ${className}`}
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#26332e] text-[#c8d3ce] text-sm hover:bg-[#1e2a25] hover:border-[#3a4a44] active:scale-95 transition-all duration-150 ${className}`}
     >
       {children}
     </button>
+  );
+}
+
+/* Text input that shows comma-formatted currency amounts (e.g. 12,500) live,
+   while remaining an easy plain-number field to type into. */
+function MoneyInput({ value, onChange, className, placeholder }) {
+  const inputRef = useRef(null);
+
+  const formatDisplay = (raw) => {
+    if (raw === "" || raw === null || raw === undefined) return "";
+    let s = String(raw);
+    const neg = s.startsWith("-");
+    if (neg) s = s.slice(1);
+    let [intPart, decPart] = s.split(".");
+    intPart = (intPart || "").replace(/\D/g, "");
+    intPart = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    let out = (neg ? "-" : "") + intPart;
+    if (decPart !== undefined) out += "." + decPart.replace(/\D/g, "");
+    return out;
+  };
+
+  const [text, setText] = useState(() => formatDisplay(value));
+
+  useEffect(() => {
+    // Keep display in sync when the value changes from outside this input
+    // (e.g. row reset, another field recalculating it).
+    if (document.activeElement !== inputRef.current) setText(formatDisplay(value));
+  }, [value]);
+
+  const handleChange = (e) => {
+    const raw = e.target.value;
+    let cleaned = raw.replace(/[^0-9.]/g, "");
+    const dotIdx = cleaned.indexOf(".");
+    if (dotIdx !== -1) cleaned = cleaned.slice(0, dotIdx + 1) + cleaned.slice(dotIdx + 1).replace(/\./g, "");
+    const formatted = formatDisplay(cleaned);
+    setText(formatted);
+    onChange(cleaned === "" || cleaned === "." ? "" : num(cleaned));
+    requestAnimationFrame(() => {
+      if (inputRef.current) {
+        const len = formatted.length;
+        inputRef.current.setSelectionRange(len, len);
+      }
+    });
+  };
+
+  return (
+    <input
+      ref={inputRef}
+      type="text"
+      inputMode="decimal"
+      placeholder={placeholder}
+      value={text}
+      onChange={handleChange}
+      className={className}
+    />
   );
 }
 
@@ -275,8 +340,11 @@ function Select({ value, onChange, options, className = "" }) {
 function SectionTitle({ children, sub }) {
   return (
     <div className="mb-3">
-      <h2 className="font-serif text-xl text-[#e9e4d8] tracking-tight" style={{ fontFamily: "'Fraunces', serif" }}>{children}</h2>
-      {sub && <p className="text-xs text-[#7d8f86] mt-0.5">{sub}</p>}
+      <h2 className="font-serif text-xl text-[#e9e4d8] tracking-tight inline-block relative pb-1" style={{ fontFamily: "'Fraunces', serif" }}>
+        {children}
+        <span className="absolute left-0 -bottom-0.5 h-[2px] w-8 rounded-full" style={{ background: "linear-gradient(90deg, #c9a227, transparent)" }} />
+      </h2>
+      {sub && <p className="text-xs text-[#7d8f86] mt-1.5">{sub}</p>}
     </div>
   );
 }
@@ -311,11 +379,10 @@ function EditableTable({ columns, rows, onChange, onAdd, onDelete, addLabel = "A
                     {ro ? (
                       <span className="font-mono text-[#c9a227] text-sm px-1 whitespace-normal break-words">{fmt(row[c.key])} <span className="text-[10px] text-[#7d8f86]">(synced)</span></span>
                     ) : c.type === "number" ? (
-                      <input
-                        type="number"
+                      <MoneyInput
                         value={row[c.key]}
-                        onChange={(e) => update(row.id, c.key, e.target.value === "" ? "" : num(e.target.value))}
-                        className="bg-[#0f1513] border border-[#26332e] rounded-md px-2 py-1.5 text-sm font-mono text-[#e9e4d8] focus:outline-none focus:border-[#c9a227] w-full min-w-[110px]"
+                        onChange={(v) => update(row.id, c.key, v)}
+                        className="bg-[#0f1513] border border-[#26332e] rounded-md px-2 py-1.5 text-sm font-mono text-[#e9e4d8] focus:outline-none focus:border-[#c9a227] w-full min-w-[110px] transition-colors"
                       />
                     ) : c.type === "date" ? (
                       <input
@@ -409,8 +476,8 @@ function LiabilitiesOverview({ borrowTotal, cardTotal, loanTotal, custom, setCus
                   className="bg-[#0f1513] border border-[#26332e] rounded-md px-2 py-1.5 text-sm text-[#e9e4d8] focus:outline-none focus:border-[#c9a227] w-full min-w-[180px] resize-y" />
               </td>
               <td className="py-2 pr-3">
-                <input type="number" value={row.amount} onChange={(e) => setCustom(custom.map((r) => r.id === row.id ? { ...r, amount: e.target.value === "" ? "" : num(e.target.value) } : r))}
-                  className="bg-[#0f1513] border border-[#26332e] rounded-md px-2 py-1.5 text-sm font-mono text-[#e9e4d8] focus:outline-none focus:border-[#c9a227] w-full min-w-[110px]" />
+                <MoneyInput value={row.amount} onChange={(v) => setCustom(custom.map((r) => r.id === row.id ? { ...r, amount: v } : r))}
+                  className="bg-[#0f1513] border border-[#26332e] rounded-md px-2 py-1.5 text-sm font-mono text-[#e9e4d8] focus:outline-none focus:border-[#c9a227] w-full min-w-[110px] transition-colors" />
               </td>
               <td className="py-2"><IconBtn danger title="Delete" onClick={() => setCustom(custom.filter((r) => r.id !== row.id))}><Trash2 size={14} /></IconBtn></td>
             </tr>
@@ -684,6 +751,16 @@ function HandCostTab({ state, setState, cycleKey, setCycleKey }) {
   const totActual = totOfficeA + totHandA;
   const cycleStatus = usageStatus(totBudget, totActual);
 
+  // Running (cumulative) balance from the 24th start date through each day —
+  // day's (budget - actual) added onto the previous day's balance.
+  let running = 0;
+  const cumulativeByDate = {};
+  dates.forEach((d) => {
+    const e = cyc.daily[d] || { officeBudget: 0, handBudget: 0, officeActual: 0, handActual: 0 };
+    running += (num(e.officeBudget) + num(e.handBudget)) - (num(e.officeActual) + num(e.handActual));
+    cumulativeByDate[d] = running;
+  });
+
   const years = Array.from({ length: 9 }, (_, i) => 2023 + i);
   const [cy, cm] = cycleKey.split("-").map(Number);
 
@@ -715,16 +792,17 @@ function HandCostTab({ state, setState, cycleKey, setCycleKey }) {
 
       <Card className="p-4">
         <SectionTitle sub="24th → 23rd cycle · daily office &amp; hand cost, colored by usage">Daily Hand Cost</SectionTitle>
-        <div className="overflow-x-auto -mx-1 px-1">
+        <div className="overflow-auto -mx-1 px-1 max-h-[70vh] rounded-lg">
           <table className="w-full text-sm border-collapse" style={{ minWidth: 780 }}>
-            <thead>
-              <tr className="text-left text-[11px] uppercase tracking-wider text-[#7d8f86] border-b border-[#26332e]">
+            <thead className="sticky top-0 z-[1]">
+              <tr className="text-left text-[11px] uppercase tracking-wider text-[#7d8f86] border-b border-[#26332e] bg-[#161f1c]">
                 <th className="py-2 pr-3" style={{ minWidth: 130 }}>Date</th>
                 <th className="py-2 pr-3" style={{ minWidth: 130 }}>Office Budget</th>
                 <th className="py-2 pr-3" style={{ minWidth: 130 }}>Hand Budget</th>
                 <th className="py-2 pr-3" style={{ minWidth: 130 }}>Office Actual</th>
                 <th className="py-2 pr-3" style={{ minWidth: 130 }}>Hand Actual</th>
                 <th className="py-2 pr-3" style={{ minWidth: 150 }}>Remaining</th>
+                <th className="py-2 pr-3" style={{ minWidth: 160 }}>Cumulative Balance</th>
               </tr>
             </thead>
             <tbody>
@@ -734,13 +812,15 @@ function HandCostTab({ state, setState, cycleKey, setCycleKey }) {
                 const dayActual = num(e.officeActual) + num(e.handActual);
                 const remaining = dayBudget - dayActual;
                 const st = usageStatus(dayBudget, dayActual);
+                const cum = cumulativeByDate[d];
+                const cumColor = cum < 0 ? COLOR.red : COLOR.green;
                 return (
                   <tr key={d} className="border-b border-[#1c2622] hover:bg-[#131b18]" style={{ borderLeft: `3px solid ${st.color}` }}>
                     <td className="py-2 pr-3 font-mono text-xs text-[#9fb0a7]">{d}</td>
                     {["officeBudget", "handBudget", "officeActual", "handActual"].map((f) => (
                       <td key={f} className="py-2 pr-3">
-                        <input type="number" value={e[f]} onChange={(ev) => updateDay(d, f, ev.target.value === "" ? "" : num(ev.target.value))}
-                          className="bg-[#0f1513] border border-[#26332e] rounded-md px-2 py-1.5 text-sm font-mono text-[#e9e4d8] focus:outline-none focus:border-[#c9a227] w-full min-w-[100px]" />
+                        <MoneyInput value={e[f]} onChange={(v) => updateDay(d, f, v)}
+                          className="bg-[#0f1513] border border-[#26332e] rounded-md px-2 py-1.5 text-sm font-mono text-[#e9e4d8] focus:outline-none focus:border-[#c9a227] w-full min-w-[100px] transition-colors" />
                       </td>
                     ))}
                     <td className="py-2 pr-3">
@@ -748,6 +828,14 @@ function HandCostTab({ state, setState, cycleKey, setCycleKey }) {
                         <span className="font-mono text-sm" style={{ color: st.color }}>{fmt(remaining)}</span>
                         {st.label && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0" style={{ color: st.color, backgroundColor: st.color + "22" }}>{st.label}</span>}
                       </div>
+                    </td>
+                    <td className="py-2 pr-3">
+                      <span className="font-mono text-sm font-semibold" style={{ color: cumColor }}>
+                        {cum < 0 ? "− " : "+ "}{fmt(Math.abs(cum))}
+                      </span>
+                      <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0" style={{ color: cumColor, backgroundColor: cumColor + "22" }}>
+                        {cum < 0 ? "Deficit" : "Saved"}
+                      </span>
                     </td>
                   </tr>
                 );
@@ -1132,7 +1220,13 @@ function App() {
   const activeMeta = TABS.find((t) => t.id === tab);
 
   return (
-    <div className="min-h-screen w-full flex bg-[#0f1513] text-[#e9e4d8]" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div
+      className="min-h-screen w-full flex bg-[#0f1513] text-[#e9e4d8]"
+      style={{
+        fontFamily: "'Inter', sans-serif",
+        backgroundImage: "radial-gradient(circle at 15% 0%, rgba(201,162,39,0.06), transparent 45%), radial-gradient(circle at 85% 100%, rgba(79,154,103,0.05), transparent 45%)",
+      }}
+    >
       <style>{`
         @media print {
           .no-print { display: none !important; }
@@ -1140,6 +1234,8 @@ function App() {
         }
         input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
         textarea { font-family: inherit; }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        .tab-fade { animation: fadeInUp 0.25s ease-out; }
       `}</style>
 
       {/* Main content (left) */}
@@ -1150,8 +1246,11 @@ function App() {
               <Menu size={18} />
             </button>
             <div>
-              <h1 className="font-serif text-2xl md:text-3xl text-[#e9e4d8]" style={{ fontFamily: "'Fraunces', serif" }}>{activeMeta.label}</h1>
-              <p className="text-xs text-[#7d8f86] mt-0.5">
+              <div className="flex items-center gap-2">
+                <span className="w-1.5 h-6 rounded-full shrink-0" style={{ backgroundColor: activeMeta.accent }} />
+                <h1 className="font-serif text-2xl md:text-3xl text-[#e9e4d8]" style={{ fontFamily: "'Fraunces', serif" }}>{activeMeta.label}</h1>
+              </div>
+              <p className="text-xs text-[#7d8f86] mt-0.5 ml-3.5">
                 {tab === "visit" ? "Kept completely separate from your budget & balance sheet" : "Figures update automatically across linked tabs"}
               </p>
             </div>
@@ -1165,7 +1264,7 @@ function App() {
         {!loaded ? (
           <p className="text-sm text-[#7d8f86]">Loading your ledger…</p>
         ) : (
-          <>
+          <div key={tab} className="tab-fade">
             {tab === "balance" && <BalanceSheetTab state={state} setState={setState} />}
             {tab === "monthly" && <MonthlyBudgetTab state={state} setState={setState} year={year} month={month} setYear={setYear} setMonth={setMonth} />}
             {tab === "handcost" && <HandCostTab state={state} setState={setState} cycleKey={cycleKey} setCycleKey={setCycleKey} />}
@@ -1185,7 +1284,7 @@ function App() {
               </div>
             )}
             {tab === "visit" && <VisitBillTab state={state} setState={setState} />}
-          </>
+          </div>
         )}
       </main>
 
